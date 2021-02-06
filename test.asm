@@ -22,18 +22,17 @@ BasicUpstart2(Start)
 
 Start:
     jsr SetupSid
-    jsr SetupScreen    
+    jsr SetupScreen
+
     jsr DisplayIntro
 
     jsr CLRSCR       // Clear screen
     jsr SetupSprites
-
-
 MainLoop:
     jsr SCNKEY      // Scan key
     lda $00CB
 
-    cmp #9
+    cmp #9          // Compare keys and act accordingly
     beq up
     cmp #13
     beq down
@@ -77,6 +76,7 @@ right:
     sta MSBX
     jmp MainLoop
 
+
 // ----------------------------------------------------------------
 SetupScreen:
     lda #0          // Set bg/fg to black
@@ -110,6 +110,7 @@ CopyLoop:
     rts
 
 // ----------------------------------------------------------------
+// Copies the into to screen, together with the colors
 DisplayIntro:
     ldx #0
 CopyLoop1:
@@ -160,12 +161,13 @@ IntroLoop:
 
     jsr $FFE4           // get key
     beq IntroLoop
-    cmp #$20
+    cmp #$20            // check for space pressed
     bne IntroLoop    
 
     rts
 
 // ----------------------------------------------------------------
+// Increase the highlight variable until and wrap around 35 chars
 RotateColor:
     inc highlight
 
@@ -179,6 +181,8 @@ skip:
     rts
     
 // ----------------------------------------------------------------
+// Print text on starting from scrollpos. This will be updated after each
+// 7 smooth scrolls in the IRQ, so all seems like a smooth scrolling
 ScrollText:    
     ldx #0    
     ldy scrollpos
@@ -189,11 +193,10 @@ Scroll:
     jmp Scroll
 nowrap:    
     iny
-    sta 1024 + (20 * 40), x
+    sta $0400 + (20 * 40), x
     inx
     cpx #40         // do 40 chars
     bne Scroll
-
 
     ldy scrollpos
     iny
@@ -208,20 +211,23 @@ nowrap2:
 
 
 // ----------------------------------------------------------------
-DisplayText:    
+// Display the title text with the given highlight color 
+DisplayText:
+    // We don't need to do this on each runs    
     ldx #0
  TextLoop1:
     lda title_txt, x
     beq TextLoop1Done   
     sta TITLE_OFFSET + 1184 + 7, x
 
-    lda #06
+    // This could be more efficient: use an old-hightlight-idx and new-highlight-idx. We only have to set these two colors.
 
+    lda #06     // Use this as color
     cpx highlight
     bne nohighlight
-    lda #01 
+    lda #01         // If we are highlighted, we use this color instead
 nohighlight:
-    sta TITLE_OFFSET + (40 * 4) + $d800 + 7, x
+    sta TITLE_OFFSET + (40 * 4) + $d800 + 7, x      // Store color in color ram
     inx
     jmp TextLoop1
 TextLoop1Done:
@@ -257,31 +263,24 @@ SetupSid:
     lda $dd0d
     asl $d019
     
-    cli
-    
+    cli    
     rts
 
 // ----------------------------------------------------------------
+// smooth scrolls decreases a counter between 7 and 0 and pan 1 left on wrap 
 SmoothScroll:
-    lda scrollx
+    lda scrollx         // Decrease smooth scroll var
     clc
     sbc #1
-    cmp #$ff
+    cmp #$ff            // wraps around 0?
     bne nopush
-    lda #$07
+    lda #$07            // if so, set back to 7
     sta scrollx
-
-    jsr ScrollText
-    jmp setx
+    jsr ScrollText      // and scroll text one character
+    rts
 nopush:
-    and #$07
+    and #$07            // no wrapping, just store first 3 bits
     sta scrollx
-setx:
-    // lda $d016
-    // and #$F8
-    // clc
-    // adc scrollx
-    // sta $d016
     rts
 
 // ----------------------------------------------------------------
@@ -294,11 +293,11 @@ irq1:
     jmp high_irq
 
 low_irq:
-    jsr music.play
-    jsr SmoothScroll
-    jsr RotateColor
+    jsr music.play      // Low IRQ plays music
+    jsr SmoothScroll    // increases smooth scroll
+    jsr RotateColor     // rotates highlight color
 
-    lda $D016
+    lda $D016           // Low IRQ means we don't want smooth scrolling at this point
     and #$F8
     sta $D016
 
@@ -306,13 +305,13 @@ low_irq:
     lda #$c0
     sta $d012
 
-    lda #$f1
+    lda #$f1        // somethingsomething
     sta $d01a
 
     jmp done
 
 high_irq:
-    lda $d016
+    lda $d016           // High IRQ sets smooth scrolling. THis way, only the lower part of the screen is smooth-scrolling 
     and #$F8
     clc
     adc scrollx
@@ -322,7 +321,7 @@ high_irq:
     lda #$00
     sta $d012
 
-    lda #$f1
+    lda #$f1        // something something again
     sta $d01a
 
     jmp done
@@ -369,7 +368,7 @@ title_txt:
     .byte $0
 
 presskey_txt:
-    .text "press <space> to begin        -         "  
+    .text "press <space> to begin   -   "  
     .byte $0
 
 scrollpos: .byte $0
