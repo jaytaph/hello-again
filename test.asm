@@ -114,43 +114,54 @@ DisplayIntro:
     ldx #0
 CopyLoop1:
     lda line1, x
-    sta 1024 + TITLE_OFFSET, x
+    sta $0400 + 0 + TITLE_OFFSET, x
     lda line2, x
-    sta 1064 + TITLE_OFFSET, x
+    sta $0400 + 40 + TITLE_OFFSET, x
     lda line3, x
-    sta 1104 + TITLE_OFFSET, x
+    sta $0400 + 80 + TITLE_OFFSET, x
     lda line3, x
-    sta 1144 + TITLE_OFFSET, x
+    sta $0400 + 120 + TITLE_OFFSET, x
     lda line3, x
-    sta 1184 + TITLE_OFFSET, x
+    sta $0400 + 160 + TITLE_OFFSET, x
     lda line3, x
-    sta 1224 + TITLE_OFFSET, x
+    sta $0400 + 200 + TITLE_OFFSET, x
     lda line3, x
-    sta 1264 + TITLE_OFFSET, x
+    sta $0400 + 240 + TITLE_OFFSET, x
     lda line2, x
-    sta 1304 + TITLE_OFFSET, x
+    sta $0400 + 280 + TITLE_OFFSET, x
     lda line1, x
-    sta 1344 + TITLE_OFFSET, x
+    sta $0400 + 320 + TITLE_OFFSET, x
+
+    lda colorlines + 0
+    sta $d800 +  0 + TITLE_OFFSET, x
+    lda colorlines + 1
+    sta $d800 + 40 + TITLE_OFFSET, x
+    lda colorlines + 2
+    sta $d800 + 80 + TITLE_OFFSET, x
+    lda colorlines + 3
+    sta $d800 + 120 + TITLE_OFFSET, x
+    lda colorlines + 4
+    sta $d800 + 160 + TITLE_OFFSET, x
+    lda colorlines + 5
+    sta $d800 + 200 + TITLE_OFFSET, x
+    lda colorlines + 6
+    sta $d800 + 240 + TITLE_OFFSET, x
+    lda colorlines + 7
+    sta $d800 + 280 + TITLE_OFFSET, x
+    lda colorlines + 8
+    sta $d800 + 320 + TITLE_OFFSET, x
+
     inx
     cpx #$28
     bne CopyLoop1
-
-
-.var highlight = 5
-
-    ldx #0
-WaitForSpace:
-    // Only rotate every 255th loop    
-    inx
-    bne norotate
-    jsr RotateColor
+        
+IntroLoop:
     jsr DisplayText
-norotate:
 
     jsr $FFE4           // get key
-    beq WaitForSpace 
+    beq IntroLoop
     cmp #$20
-    bne WaitForSpace    
+    bne IntroLoop    
 
     rts
 
@@ -167,6 +178,35 @@ skip:
 
     rts
     
+// ----------------------------------------------------------------
+ScrollText:    
+    ldx #0    
+    ldy scrollpos
+Scroll:    
+    lda presskey_txt, y
+    bne nowrap
+    ldy #0        // wrap to 0 after the next incy
+    jmp Scroll
+nowrap:    
+    iny
+    sta 1024 + (20 * 40), x
+    inx
+    cpx #40         // do 40 chars
+    bne Scroll
+
+
+    ldy scrollpos
+    iny
+    lda presskey_txt, y
+    bne nowrap2
+    ldy #0
+nowrap2:
+    sty scrollpos       // Store new scroll pos
+    rts
+
+
+
+
 // ----------------------------------------------------------------
 DisplayText:    
     ldx #0
@@ -207,11 +247,11 @@ SetupSid:
     lda #$01
     sta $d01a
 
-    lda #$1b       
-    sta $d011
-
-    lda #$7e        // 
+    lda #$30
     sta $d012
+    lda $d011
+    and #$7f       
+    sta $d011
 
     lda $dc0d
     lda $dd0d
@@ -222,10 +262,73 @@ SetupSid:
     rts
 
 // ----------------------------------------------------------------
+SmoothScroll:
+    lda scrollx
+    clc
+    sbc #1
+    cmp #$ff
+    bne nopush
+    lda #$07
+    sta scrollx
+
+    jsr ScrollText
+    jmp setx
+nopush:
+    and #$07
+    sta scrollx
+setx:
+    // lda $d016
+    // and #$F8
+    // clc
+    // adc scrollx
+    // sta $d016
+    rts
+
+// ----------------------------------------------------------------
 irq1:
     asl $d019           // ack
-    jsr music.play      
-    sjmp $ea81           // jump to old ISR
+    
+    lda $D012           // Check if we are on the low or high irq
+    cmp #$80
+    bcc low_irq
+    jmp high_irq
+
+low_irq:
+    jsr music.play
+    jsr SmoothScroll
+    jsr RotateColor
+
+    lda $D016
+    and #$F8
+    sta $D016
+
+    // set next irq trigger on high raster line 
+    lda #$c0
+    sta $d012
+
+    lda #$f1
+    sta $d01a
+
+    jmp done
+
+high_irq:
+    lda $d016
+    and #$F8
+    clc
+    adc scrollx
+    sta $d016
+
+    // set next irq trigger on low raster line
+    lda #$00
+    sta $d012
+
+    lda #$f1
+    sta $d01a
+
+    jmp done
+
+done:
+    jmp $ea81           // jump to old ISR
 
 // ----------------------------------------------------------------
 balloon:
@@ -252,9 +355,11 @@ balloon:
 	.byte   0,  28,   0
 
 
-line1:  .byte  32, 32,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249, 32, 32
-line2:  .byte  32,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249, 32
-line3:  .byte 249,249,249,249,249, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,249,249,249,249,249
+colorlines: .byte  2, 7, 2, 7, 2, 7, 2, 7, 2, 7, 2, 7, 2, 7
+
+line1:  .byte  32, 32,32,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,32, 32, 32
+line2:  .byte  32,32,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,249,32, 32
+line3:  .byte 32,249,249,249,249, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,249,249,249,249,32
 
 *=music.location "Music"
     .fill music.size, music.getData(i)
@@ -264,5 +369,10 @@ title_txt:
     .byte $0
 
 presskey_txt:
-    .text "press <space> to begin"
+    .text "press <space> to begin        -         "  
     .byte $0
+
+scrollpos: .byte $0
+highlight: .byte $05
+
+scrollx: .byte $07
